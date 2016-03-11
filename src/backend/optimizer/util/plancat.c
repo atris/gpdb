@@ -419,7 +419,7 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 		 * Put default estimates in case no statistics are available. This saves cost of asking QEs
 		 */
 		curpages = RelationIsExternal(rel) ? DEFAULT_EXTERNAL_TABLE_PAGES : DEFAULT_INTERNAL_TABLE_PAGES;
-		*default_stats_used = true;
+		//*default_stats_used = true;
 	}
 
 	/* report estimated # pages */
