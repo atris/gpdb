@@ -32,7 +32,7 @@ InitWaiterQueue(WaiterQueue *wque)
 
     if (!found)
     {
-      SHMQueueInit(&wque->waiterQueue);
+      SHMQueueInit(&wque->links);
     }
 
     isInitialized = true;

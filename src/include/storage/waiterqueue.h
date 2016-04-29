@@ -16,10 +16,13 @@
 
 #include "storage/pg_shmem.h"
 #include "storage/shmem.h"
+#include "storage/pg_sema.h"
 
 typedef struct WaiterQueue
 {
-  SHM_QUEUE waiterQueue;
+  SHM_QUEUE links;
+  PGSemaphoreData sem;		/* ONE semaphore to sleep on */
+  int size;
 } WaiterQueue;
 
 #define WaiterQueueDataSize \
