@@ -19,6 +19,7 @@
 #include "storage/lock.h"
 #include "storage/spin.h"
 #include "storage/pg_sema.h"
+#include "storage/waiterqueue.h"
 #include "access/xlog.h"
 
 #include "cdb/cdbpublic.h"  /* LocalDistribXactRef */
@@ -261,4 +262,5 @@ extern bool ProcCanSetMppSessionId(void);
 extern void ProcNewMppSessionId(int *newSessionId);
 extern bool freeAuxiliaryProcEntryAndReturnReset(int pid, bool *inArray);
 extern bool freeProcEntryAndReturnReset(int pid);
+extern void WaiterQueueSleep(WaiterQueue *wque);
 #endif   /* PROC_H */

@@ -1946,3 +1946,27 @@ freeProcEntryAndReturnReset(int pid)
 
 	return resetRequired;
 }
+
+void 
+WaiterQueueSleep(WaiterQueue *wque)
+{
+
+	PGPROC		*proc;
+
+	proc = (PGPROC *) &(wque->links);
+	SHMQueueInsertBefore(&(proc->links), &(MyProc->links));
+	wque->size++;
+	
+	elog (WARNING,"pid1 is %d", MyProc->pid);
+	
+	if (!enable_sig_alarm(DeadlockTimeout, false))
+			elog(FATAL, "could not set timer for (waiter queue) process wakeup");
+
+	do
+	{
+		PGSemaphoreLock(&MyProc->sem, true);
+	} while (MyProc->waitStatus == STATUS_WAITING);
+
+	if (!disable_sig_alarm(false))
+		elog(FATAL, "could not disable timer for (waiter queue) process wakeup");
+}

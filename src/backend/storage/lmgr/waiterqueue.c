@@ -14,29 +14,51 @@
  */
 #include "postgres.h"
 
+#include "storage/proc.h"
 #include "storage/lwlock.h"
 #include "storage/waiterqueue.h"
 
-void
-InitWaiterQueue(WaiterQueue *wque)
+int DeadlockTimeoutWaiterQueue = 1000;
+
+WaiterQueue*
+InitWaiterQueue()
 {
   bool found = false;
+  WaiterQueue *wque = NULL;
 
-  LWLockAcquire(WaiterQueueLock, LW_EXCLUSIVE);
+  wque = (WaiterQueue *) ShmemInitStruct("WaiterQueue",
+                          WaiterQueueDataSize,
+                          &found);
 
-  if (isInitialized == false)
+  if (found)
   {
-    wque = ShmemInitStruct("WaiterQueue",
-                              WaiterQueueDataSize,
-                              &found);
-
-    if (!found)
-    {
-      SHMQueueInit(&wque->links);
-    }
-
-    isInitialized = true;
+    SHMQueueInit(&wque->links);
   }
+  
+  return wque;
+}
 
-  LWLockRelease(WaiterQueueLock);
+PGPROC *
+WaiterQueueWakeUp(WaiterQueue *waitQueue)
+{
+  PGPROC    *proc;
+	PGPROC		*retProc;
+
+  proc = (PGPROC *) MAKE_PTR(waitQueue->links.next);
+
+  /* Proc should be sleeping ... */
+	if (proc->links.prev == INVALID_OFFSET ||
+		proc->links.next == INVALID_OFFSET)
+		return NULL;
+
+	/* Save next process before we zap the list link */
+	retProc = (PGPROC *) MAKE_PTR(proc->links.next);
+
+	/* Remove process from wait queue */
+	SHMQueueDelete(&(proc->links));
+
+	/* And awaken it */
+	PGSemaphoreUnlock(&proc->sem);
+
+	return retProc;
 }

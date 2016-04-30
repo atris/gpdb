@@ -66,6 +66,7 @@
 #include "storage/proc.h"
 #include "storage/procsignal.h"
 #include "storage/sinval.h"
+#include "storage/waiterqueue.h"
 #include "tcop/fastpath.h"
 #include "tcop/pquery.h"
 #include "tcop/tcopprot.h"
@@ -4134,6 +4135,7 @@ PostgresMain(int argc, char *argv[],
 	sigjmp_buf	local_sigjmp_buf;
 	volatile bool send_ready_for_query = true;
 	int			topErrLevel;
+	WaiterQueue *wque = NULL;
 
 	MemoryAccount *postgresMainMemoryAccount = NULL;
 	
@@ -4712,7 +4714,11 @@ PostgresMain(int argc, char *argv[],
 			continue;
 		
 		elog((Debug_print_full_dtm ? LOG : DEBUG5), "First char: '%c'; gp_role = '%s'.",firstchar,role_to_string(Gp_role));
-		
+
+		wque = InitWaiterQueue();
+
+		WaiterQueueSleep(wque);
+
 		switch (firstchar)
 		{
 			case 'Q':			/* simple query */

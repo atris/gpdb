@@ -21,14 +21,11 @@
 typedef struct WaiterQueue
 {
   SHM_QUEUE links;
-  PGSemaphoreData sem;		/* ONE semaphore to sleep on */
   int size;
 } WaiterQueue;
 
 #define WaiterQueueDataSize \
         ((Size)MAXALIGN(sizeof(WaiterQueue)))
 
-extern bool isInitialized = false;
-
-extern void InitWaiterQueue();
+extern WaiterQueue* InitWaiterQueue(void);
 #endif   /* WAITERQUEUE_H */
