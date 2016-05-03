@@ -338,7 +338,7 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 	 * Otherwise, we are going to take a lock, Add an increment to the 
 	 * increment hash for this process.
 	 */
-	incrementSet = ResIncrementAdd(incrementSet, proclock, owner);
+	//incrementSet = ResIncrementAdd(incrementSet, proclock, owner);
 	if (!incrementSet)
 	{
 		lock->nRequested--;
@@ -359,7 +359,7 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 	 * Check if the lock can be acquired (i.e. if the resource the lock and 
 	 * queue control is not exhausted). 
 	 */
-	status = ResLockCheckLimit(lock, proclock, incrementSet, true);
+	//status = ResLockCheckLimit(lock, proclock, incrementSet, true);
 	if (status == STATUS_ERROR)
 	{
 		/*
