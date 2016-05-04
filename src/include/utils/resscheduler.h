@@ -179,7 +179,8 @@ extern void AtCommit_ResScheduler(void);
 extern void AtAbort_ResScheduler(void);
 extern void ResHandleUtilityStmt(Portal portal, Node *stmt);
 extern bool ResLockUtilityPortal(Portal portal, float4 ignoreCostLimit);
-extern bool ResLockPrelock();
+extern bool ResLockPrelock(void);
+extern int ResLockCheckActiveStatements(LOCK *lock, PROCLOCK *proclock);
 
 /**
  * Assert that the in-memory state matches the catalog table.

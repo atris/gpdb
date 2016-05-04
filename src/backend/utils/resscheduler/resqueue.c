@@ -127,7 +127,7 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 	bool			found;
 	ResourceOwner	owner;
 	ResQueue		queue;
-	int				status;
+	int				status = 0;
 
 	/* Setup the lock method bits. */
 	Assert(locktag->locktag_lockmethodid == RESOURCE_LOCKMETHOD);
@@ -354,12 +354,12 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 				 errmsg("out of shared memory adding portal increments"),
 				 errhint("You may need to increase max_resource_portals_per_transaction.")));
 	}
-
 	/*
 	 * Check if the lock can be acquired (i.e. if the resource the lock and 
 	 * queue control is not exhausted). 
 	 */
 	//status = ResLockCheckLimit(lock, proclock, incrementSet, true);
+	status = ResLockCheckActiveStatements(lock, proclock);
 	if (status == STATUS_ERROR)
 	{
 		/*
@@ -530,6 +530,8 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
 
 	/* Check the lock method bits. */
 	Assert(locktag->locktag_lockmethodid == RESOURCE_LOCKMETHOD);
+	
+	elog(WARNING,"in release1");
 
 	/* Provide a resource owner. */
 	owner = CurrentResourceOwner;
@@ -551,6 +553,7 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
         !locallock->lock ||
         !locallock->proclock)
 	{
+		elog(WARNING,"cond1");
 		/* Change the log level from LOG to DEBUG1, since after overhauling the
 		 * locking code of resource queue, this path would be hit much more
 		 * frequently, and also the info should be catagorized as DEBUG
@@ -586,6 +589,7 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
         proclock->tag.myProc != MyProc ||
         memcmp(&locallock->tag.lock, &lock->tag, sizeof(lock->tag)) != 0)
     {
+		elog(WARNING,"cond2");
 		LWLockRelease(partitionLock);
         elog(DEBUG1, "Resource queue %d: lock already gone", locktag->locktag_field1);
         RemoveLocalLock(locallock);
@@ -599,6 +603,7 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
 	 */
 	if (!(proclock->holdMask & LOCKBIT_ON(lockmode)) || proclock->nLocks <= 0)
 	{
+		elog(WARNING,"cond3");
 		LWLockRelease(partitionLock);
         elog(DEBUG1, "Resource queue %d: proclock not held", locktag->locktag_field1);
         RemoveLocalLock(locallock);
@@ -618,6 +623,15 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
 	incrementSet = ResIncrementFind(&portalTag);
 	if (!incrementSet)
 	{
+		ResPortalIncrement	single_activeData;
+		
+		single_activeData.pid = MyProc->pid;
+		single_activeData.portalId = portal->portalId;
+		single_activeData.increments[RES_COUNT_LIMIT] = 1;
+
+		ResLockUpdateLimit(lock, proclock, &single_activeData, false);
+
+		elog(WARNING,"cond4");
 		elog(DEBUG1, "Resource queue %d: increment not found on unlock", locktag->locktag_field1);
 		if (proclock->nLocks == 0)
 		{
@@ -630,11 +644,14 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
 		return false;			
 	}
 
+	elog(WARNING,"cond5");
 	/*
 	 * Un-grant the lock.
 	 */
 	ResUnGrantLock(lock, proclock);
 	ResLockUpdateLimit(lock, proclock, incrementSet, false);
+
+	elog(WARNING,"cond6");
 
 	/*
 	 * Perform clean-up, waking up any waiters!
@@ -2094,5 +2111,50 @@ void AssertMemoryLimitsMatch(void)
 	}
 	
 	return;
+}
+
+int
+ResLockCheckActiveStatements(LOCK *lock, PROCLOCK *proclock)
+{
+	ResQueue		queue;
+	ResLimit		limits;
+	int				status = STATUS_OK;
+	int				i;
+	
+	elog(WARNING,"in res1");
+
+	Assert(LWLockHeldExclusiveByMe(ResQueueLock));
+
+	/* Get the queue for this lock.*/
+	queue = GetResQueueFromLock(lock);
+	limits = queue->limits;
+
+	for (i = 0; i < NUM_RES_LIMIT_TYPES; i++)
+	{
+		/*
+	 	* Skip the default threshold, as it means 'no limit'.
+	 	*/
+		if (limits[i].threshold_value == INVALID_RES_LIMIT_THRESHOLD)
+		{
+			elog(WARNING,"thresinval1");
+
+			continue;
+		}
+
+		if (limits[i].type == RES_COUNT_LIMIT)
+		{
+			Assert((limits[i].threshold_is_max));
+			
+			elog(WARNING,"val1 %lf %lf",limits[i].current_value,limits[i].threshold_value);
+
+			if (limits[i].current_value + 1 > limits[i].threshold_value)
+			{
+					elog(WARNING,"wait1");
+					status = STATUS_FOUND;
+			}
+		}
+	}
+	elog(WARNING,"status1%d",status);
+	return status;
 }
 #endif

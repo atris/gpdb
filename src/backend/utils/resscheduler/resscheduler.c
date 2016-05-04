@@ -545,6 +545,7 @@ ResLockPortal(Portal portal, QueryDesc *qDesc)
 	int32		lockResult = 0;
 	ResPortalIncrement	incData;
 	Plan *plan = NULL;
+	int status = STATUS_OK;
 
 	Assert(qDesc);
 	Assert(qDesc->plannedstmt);
@@ -683,44 +684,40 @@ ResLockPortal(Portal portal, QueryDesc *qDesc)
 			SET_LOCKTAG_RESOURCE_QUEUE(tag, queueid);
 			return true;
 
-			PG_TRY();
+			//lockResult = ResLockAcquire(&tag, &incData);
+			//status = ResLockCheckLimit(lock, proclock, incrementSet, true);
+			if (status == STATUS_ERROR)
 			{
-				//lockResult = ResLockAcquire(&tag, &incData);
+				/* Adjust the counters as we no longer want this lock. */
+				ResLockRelease(&tag, portal->portalId);
 			}
-			PG_CATCH();
+			else if (status ==  STATUS_OK)
 			{
 				/* 
-				 * We might have been waiting for a resource queue lock when we get 
-				 * here. Calling ResLockRelease without calling ResLockWaitCancel will 
-				 * cause the locallock to be cleaned up, but will leave the global
-				 * variable lockAwaited still pointing to the locallock hash 
-				 * entry.
-				 */
-				ResLockWaitCancel();
-		
-				/* Change status to no longer waiting for lock */
-				pgstat_report_waiting(PGBE_WAITING_NONE);
+				 * The requested lock will *not* exhaust the limit for this resource
+				 * queue, so record this in the local lock hash, and grant it.
+				*/
+				//ResLockUpdateLimit(lock, proclock, incrementSet, true);
 
-				/* If we had acquired the resource queue lock, release it and clean up */	
+				/* Note the start time for queue statistics. */
+				pgstat_record_start_queue_exec(incData.portalId,
+																				tag.locktag_field1);
+			}
+			else
+			{
 				ResLockRelease(&tag, portal->portalId);
 
 				/*
-				 * Perfmon related stuff: clean up if we got cancelled
-				 * while waiting.
-				 */
-				if (gp_enable_gpperfmon && qDesc->gpmon_pkt)
-				{			
-					gpmon_qlog_query_error(qDesc->gpmon_pkt);
-					pfree(qDesc->gpmon_pkt);
-					qDesc->gpmon_pkt = NULL;
-				}
-
-				portal->queueId = InvalidOid;
-				portal->portalId = INVALID_PORTALID;
-
-				PG_RE_THROW();
+				 * The requested lock will exhaust the limit for this resource queue,
+				 * so must wait. Before waiting, check the status of self deadlock.
+				*/
+				/*if (ResCheckSelfDeadLock(lock, proclock, incrementSet, queue))
+				{
+						ereport(ERROR,
+								(errcode(ERRCODE_T_R_DEADLOCK_DETECTED),
+								 errmsg("deadlock detected, locking against self")));
+				}*/
 			}
-			PG_END_TRY();
 
 			/* 
 			 * See if query was too small to bother locking at all, i.e had
