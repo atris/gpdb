@@ -626,7 +626,7 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
 		ResPortalIncrement	single_activeData;
 		
 		single_activeData.pid = MyProc->pid;
-		single_activeData.portalId = portal->portalId;
+		single_activeData.portalId = resPortalId;
 		single_activeData.increments[RES_COUNT_LIMIT] = 1;
 
 		ResLockUpdateLimit(lock, proclock, &single_activeData, false);
@@ -638,7 +638,7 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
 			RemoveLocalLock(locallock);
 		}
 		/* no need to do the wakeups */
-		ResCleanUpLock(lock, proclock, hashcode, false);
+		ResCleanUpLock(lock, proclock, hashcode, true);
 		LWLockRelease(ResQueueLock);
 		LWLockRelease(partitionLock);
 		return false;			
@@ -866,6 +866,9 @@ ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *increment
 	queue = GetResQueueFromLock(lock);
 	limits = queue->limits;
 
+	if (increment == false)
+		elog(WARNING,"false1");
+
 	for (i = 0; i < NUM_RES_LIMIT_TYPES; i++)
 	{
 
@@ -892,13 +895,16 @@ ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *increment
 				}
 				else
 				{
+					elog(WARNING,"decrease1 %lf", incrementSet->increments[i]);
 					increment_amt = -1 * incrementSet->increments[i];
 				}
 
 				new_value = ceil(limits[i].current_value + increment_amt);
 				new_value = Max(new_value, 0.0);
 
+				elog(WARNING,"decrease2 %lf",limits[i].current_value);
 				limits[i].current_value = new_value;
+				elog(WARNING,"decrease3 %lf", limits[i].current_value);
 			}
 			break;
 
@@ -1182,7 +1188,9 @@ ResProcLockRemoveSelfAndWakeup(LOCK *lock)
 		 * Get the portal we are waiting on, and then its set of increments.
 		 */
 		ResPortalTag			portalTag;
-		ResPortalIncrement		*incrementSet;
+		ResPortalIncrement		incrementSet;
+		
+		incrementSet.increments[RES_COUNT_LIMIT] = 1;
 
 		/* Our own process may be on our wait-queue! */
 		if (proc->pid == MyProc->pid)
@@ -1203,7 +1211,7 @@ ResProcLockRemoveSelfAndWakeup(LOCK *lock)
 		portalTag.pid = proc->pid;
 		portalTag.portalId = proc->waitPortalId;
 
-		incrementSet = ResIncrementFind(&portalTag);
+		/*incrementSet = ResIncrementFind(&portalTag);
 		if (!incrementSet)
 		{
 			hashcode = LockTagHashCode(&(lock->tag));
@@ -1211,17 +1219,17 @@ ResProcLockRemoveSelfAndWakeup(LOCK *lock)
 
 			LWLockRelease(partitionLock);
 			elog(ERROR, "no increment data for  portal id %u and pid %d", proc->waitPortalId, proc->pid);
-		}
+		}*/
 
 		/*
 		 * See if it is ok to wake this guy. (note that the wakeup
 		 * writes to the wait list, and gives back a *new* next proc).
 		 */
-		status = ResLockCheckLimit(lock, (PROCLOCK *) proc->waitProcLock, incrementSet, true);
+		status = ResLockCheckLimit(lock, (PROCLOCK *) proc->waitProcLock, &incrementSet, true);
 		if (status == STATUS_OK)
 		{
 			ResGrantLock(lock, (PROCLOCK *) proc->waitProcLock);
-			ResLockUpdateLimit(lock, (PROCLOCK *) proc->waitProcLock, incrementSet, true);
+			ResLockUpdateLimit(lock, (PROCLOCK *) proc->waitProcLock, &incrementSet, true);
 
 			proc = ResProcWakeup(proc, STATUS_OK);
 		}
