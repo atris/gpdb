@@ -1546,10 +1546,7 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 	if (Gp_role != GP_ROLE_EXECUTE)
 	{
 		increment_command_count();
-		
-		if (!superuser())
-			ResLockPrelock();
-		
+
 		MyProc->queryCommandId = gp_command_count;
 		if (gp_cancel_query_print_log)
 		{
@@ -1669,6 +1666,11 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 			elog(ERROR,"Raise ERROR for debug_dtm_action = %d, commandTag = %s",
 				 Debug_dtm_action, commandTag);
 		}
+
+			if (!superuser())
+			{
+				ResLockPrelock(parsetree);
+			}
 
 		/*
 		 * If are connected in utility mode, disallow PREPARE TRANSACTION statements.
@@ -4713,9 +4715,7 @@ PostgresMain(int argc, char *argv[],
 		 */
 		if (ignore_till_sync && firstchar != EOF)
 			continue;
-		
-		//ResLockPrelock();
-		
+
 		elog((Debug_print_full_dtm ? LOG : DEBUG5), "First char: '%c'; gp_role = '%s'.",firstchar,role_to_string(Gp_role));
 		
 		switch (firstchar)

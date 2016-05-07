@@ -492,7 +492,7 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt,
 		}
 		else
 		{
-			queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, GetResQueueId());			
+			queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(GetResQueueId());			
 		}
     }
 

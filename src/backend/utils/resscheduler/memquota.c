@@ -1130,7 +1130,7 @@ int64 ResourceQueueGetMemoryLimit(Oid queueId)
 /**
  * Given a queueid, how much memory should a query take in bytes.
  */
-uint64 ResourceQueueGetQueryMemoryLimit(PlannedStmt *stmt, Oid queueId)
+uint64 ResourceQueueGetQueryMemoryLimit(Oid queueId)
 {		
 	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY);
 	Assert(gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO ||
@@ -1163,17 +1163,10 @@ uint64 ResourceQueueGetQueryMemoryLimit(PlannedStmt *stmt, Oid queueId)
 
 	Assert(resQueue);	
 	int numSlots = (int) ceil(resQueue->limits[RES_COUNT_LIMIT].threshold_value);
-	double costLimit = (double) resQueue->limits[RES_COST_LIMIT].threshold_value;
-	double planCost = stmt->planTree->total_cost;
-	
-	if (planCost < 1.0)
-		planCost = 1.0;
-
-	Assert(planCost > 0.0);
 	
 	if (gp_log_resqueue_memory)
 	{
-		elog(gp_resqueue_memory_log_level, "numslots: %d, costlimit: %f", numSlots, costLimit);
+		elog(gp_resqueue_memory_log_level, "numslots: %d", numSlots);
 	}
 	
 	if (numSlots < 1)
@@ -1182,20 +1175,15 @@ uint64 ResourceQueueGetQueryMemoryLimit(PlannedStmt *stmt, Oid queueId)
 		numSlots = 1;
 	}
 	
-	if (costLimit < 0.0)
-	{
-		/** there is no cost limit set */
-		costLimit = planCost;
-	}
 
-	double minRatio = minDouble( 1.0/ (double) numSlots, planCost / costLimit);
+	double minRatio = 1.0/ (double) numSlots;
 	
 	minRatio = minDouble(minRatio, 1.0);
 
 	if (gp_log_resqueue_memory)
 	{
-		elog(gp_resqueue_memory_log_level, "slotratio: %0.3f, costratio: %0.3f, minratio: %0.3f",
-				1.0/ (double) numSlots, planCost / costLimit, minRatio);
+		elog(gp_resqueue_memory_log_level, "slotratio: %0.3f, minratio: %0.3f",
+				1.0/ (double) numSlots, minRatio);
 	}
 	
 	uint64 queryMem = (uint64) resqLimitBytes * minRatio;
@@ -1219,5 +1207,3 @@ uint64 ResourceQueueGetSuperuserQueryMemoryLimit(void)
 	Assert(superuser());
 	return (uint64) statement_mem * 1024L;
 }
-
-

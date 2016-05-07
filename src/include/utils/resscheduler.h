@@ -179,7 +179,7 @@ extern void AtCommit_ResScheduler(void);
 extern void AtAbort_ResScheduler(void);
 extern void ResHandleUtilityStmt(Portal portal, Node *stmt);
 extern bool ResLockUtilityPortal(Portal portal, float4 ignoreCostLimit);
-extern bool ResLockPrelock(void);
+extern bool ResLockPrelock(Node *parsetree);
 extern int ResLockCheckActiveStatements(LOCK *lock, PROCLOCK *proclock);
 
 /**

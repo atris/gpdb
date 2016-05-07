@@ -41,7 +41,7 @@ extern int64 ResourceQueueGetMemoryLimit(Oid queueId);
 /**
  * What is the memory limit for a query on a specific queue?
  */
-extern uint64 ResourceQueueGetQueryMemoryLimit(PlannedStmt *stmt, Oid queueId);
+extern uint64 ResourceQueueGetQueryMemoryLimit(Oid queueId);
 
 /**
  * What is the memory reservation for superuser queries?

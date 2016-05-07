@@ -1983,8 +1983,7 @@ _SPI_assign_query_mem(QueryDesc * queryDesc)
 			if (!SPI_IsMemoryReserved())
 			{
 				queryDesc->plannedstmt->query_mem =
-					ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt,
-													 ActivePortal->queueId);
+					ResourceQueueGetQueryMemoryLimit(ActivePortal->queueId);
 			}
 			else
 			{

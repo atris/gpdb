@@ -1085,31 +1085,23 @@ ResHandleUtilityStmt(Portal portal, Node *stmt)
 }
 
 bool
-ResLockPrelock()
+ResLockPrelock(Node *parsetree)
 {
 	bool returnReleaseOk = false;
 	LOCKTAG		tag;
 	Oid			queueid;
 	int32		lockResult = 0;
-	ResPortalIncrement	incData;
+	ResPortalIncrement incData;
+	bool takeLock = false;
 
 	queueid = GetResQueueId();
-
+	
+	elog(WARNING,"input3res1 %d", queueid);
 	/*
 	 * Check we have a valid queue before going any further.
 	 */
 	if (queueid != InvalidOid)
 	{
-		/*
-		 * Setup the resource portal increments, ready to be added.
-		 */
-		incData.pid = MyProc->pid;
-		incData.portalId = InvalidOid;
-		incData.increments[RES_COUNT_LIMIT] = 1;
-		incData.increments[RES_COST_LIMIT] = 0.0;
-		incData.increments[RES_MEMORY_LIMIT] = (Cost) 0.0;
-		returnReleaseOk = true;
-
 		/*
 		 * Get the resource lock.
 		 */
@@ -1118,6 +1110,62 @@ ResLockPrelock()
 				queueid, portal->portalId);
 #endif
 		SET_LOCKTAG_RESOURCE_QUEUE(tag, queueid);
+
+		/* Check if we need Resource Queue lock
+		* For INSERT/UPDATE/DELETE Skip if we have specified only SELECT,
+		* otherwise drop through to handle like a SELECT.
+		*/
+		switch(nodeTag(parsetree))
+		{
+			case T_InsertStmt:
+			case T_DeleteStmt:
+			case T_UpdateStmt:
+			{
+				if (ResourceSelectOnly)
+				{
+					takeLock = false;
+					break;
+				}
+			}
+			case T_SelectStmt:
+			case T_DeclareCursorStmt:
+			{
+				/*
+				* Setup the resource portal increments, ready to be added.
+				*/
+				incData.pid = MyProc->pid;
+				incData.increments[RES_COUNT_LIMIT] = 1;
+				if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
+				{
+					Assert(gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO ||
+  				gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_EAGER_FREE);
+
+					elog(WARNING,"input queueId1 %d",queueid);
+					uint64 queryMemory = ResourceQueueGetQueryMemoryLimit(queueid);
+					Assert(queryMemory > 0);
+					if (gp_log_resqueue_memory)
+					{
+						elog(gp_resqueue_memory_log_level, "query requested %.0fKB", (double) queryMemory / 1024.0);
+					}
+
+					incData.increments[RES_MEMORY_LIMIT] = (Cost) queryMemory;
+				}
+				else 
+				{
+					Assert(gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_NONE);
+					incData.increments[RES_MEMORY_LIMIT] = (Cost) 0.0;
+				}
+
+				takeLock = true;
+			}
+			break;
+
+			default:
+			{
+				takeLock = false;
+				break;
+			}
+		}
 
 		elog(WARNING,"calling lock1");
 		PG_TRY();

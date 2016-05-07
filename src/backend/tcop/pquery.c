@@ -256,7 +256,7 @@ ProcessQuery(Portal portal,
 		portal->status = PORTAL_QUEUE;
 		
 		if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
-			queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, portal->queueId);
+			queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(portal->queueId);
 		
 		portal->holdingResLock = ResLockPortal(portal, queryDesc);
 	}
@@ -798,14 +798,14 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 					{
 						portal->status = PORTAL_QUEUE;
 						if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
-							queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, portal->queueId);
+							queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(portal->queueId);
 					}
 					else
 					{
 						portal->status = PORTAL_QUEUE;
 						
 						if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
-							queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, portal->queueId);
+							queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(portal->queueId);
 						portal->holdingResLock = ResLockPortal(portal, queryDesc);
 					}
 				}
