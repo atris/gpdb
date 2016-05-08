@@ -1106,8 +1106,7 @@ ResLockPrelock()
 		incData.pid = MyProc->pid;
 		incData.portalId = InvalidOid;
 		incData.increments[RES_COUNT_LIMIT] = 1;
-		incData.increments[RES_COST_LIMIT] = 0.0;
-		incData.increments[RES_MEMORY_LIMIT] = (Cost) 0.0;
+		incData.increments[RES_MEMORY_LIMIT] = ResourceQueueGetQueryMemoryLimit(NULL, queueid);
 		returnReleaseOk = true;
 
 		/*

@@ -1546,10 +1546,7 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 	if (Gp_role != GP_ROLE_EXECUTE)
 	{
 		increment_command_count();
-		
-		if (!superuser())
-			ResLockPrelock();
-		
+
 		MyProc->queryCommandId = gp_command_count;
 		if (gp_cancel_query_print_log)
 		{
@@ -1601,7 +1598,9 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 	oldcontext = MemoryContextSwitchTo(MessageContext);
 
 	QueryContext = CurrentMemoryContext;
-	
+
+	if (Gp_role == GP_ROLE_DISPATCH && !superuser() && ResourceScheduler)
+		ResLockPrelock();
 	/*
 	 * Do basic parsing of the query or queries (this should be safe even if
 	 * we are in aborted transaction state!)
