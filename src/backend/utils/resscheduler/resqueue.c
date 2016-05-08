@@ -528,6 +528,13 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
 	ResPortalIncrement	*incrementSet;
 	ResPortalTag		portalTag;
 
+	ResPortalIncrement	single_activeData;
+	
+	single_activeData.pid = MyProc->pid;
+	single_activeData.portalId = resPortalId;
+	single_activeData.increments[RES_COUNT_LIMIT] = 1;
+	single_activeData.increments[RES_MEMORY_LIMIT] = ResourceQueueGetQueryMemoryLimit(NULL,GetResQueueId());
+
 	/* Check the lock method bits. */
 	Assert(locktag->locktag_lockmethodid == RESOURCE_LOCKMETHOD);
 	
@@ -616,12 +623,6 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
 	incrementSet = ResIncrementFind(&portalTag);
 	if (!incrementSet)
 	{
-		ResPortalIncrement	single_activeData;
-		
-		single_activeData.pid = MyProc->pid;
-		single_activeData.portalId = resPortalId;
-		single_activeData.increments[RES_COUNT_LIMIT] = 1;
-		//single_activeData.increments[RES_MEMORY_LIMIT]
 
 		ResLockUpdateLimit(lock, proclock, &single_activeData, false);
 
