@@ -227,7 +227,7 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 														HASH_ENTER_NULL,
 														&found);
 	locallock->proclock = proclock;
-    if (!proclock)
+	if (!proclock)
 	{
 		/* Not enough shmem for the proclock. */
 		if (lock->nRequested == 0)
@@ -318,8 +318,8 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 		Assert((lock->nRequested >= 0) && (lock->requested[lockmode] >= 0));
 
 		/* Clean up this lock. */
-        if (proclock->nLocks == 0)
-		    RemoveLocalLock(locallock);
+		if (proclock->nLocks == 0)
+			RemoveLocalLock(locallock);
 
 		ResCleanUpLock(lock, proclock, hashcode, false);
 
@@ -358,8 +358,7 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 	 * Check if the lock can be acquired (i.e. if the resource the lock and 
 	 * queue control is not exhausted). 
 	 */
-	//status = ResLockCheckLimit(lock, proclock, incrementSet, true);
-	status = ResLockCheckActiveStatements(lock, proclock);
+	status = ResLockCheckLimit(lock, proclock, incrementSet, true);
 	if (status == STATUS_ERROR)
 	{
 		/*
@@ -375,8 +374,8 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 		Assert((lock->nRequested >= 0) && (lock->requested[lockmode] >= 0));
 
 		/* Clean up this lock. */
-        if (proclock->nLocks == 0)
-    		RemoveLocalLock(locallock);
+		if (proclock->nLocks == 0)
+			RemoveLocalLock(locallock);
 
 		ResCleanUpLock(lock, proclock, hashcode, false);
 
@@ -746,51 +745,6 @@ ResLockCheckLimit(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *incrementS
 
 #ifdef RESLOCK_DEBUG
 				elog(DEBUG1, "checking count limit threshold %.0f current %.0f",
-					 limits[i].threshold_value, limits[i].current_value);
-#endif
-			}
-			break;
-
-			case RES_COST_LIMIT:
-			{
-				Assert((limits[i].threshold_is_max));
-
-				/* Setup whether to increment or decrement the cost. */
-				if (increment)
-				{
-					increment_amt = incrementSet->increments[i];
-
-					/* Check if this will overcommit */
-					if (increment_amt > limits[i].threshold_value)
-						will_overcommit = true;
-
-					if (queue->overcommit)
-					{
-						/*
-						 * Autocommit is enabled, allow statements that
-						 * blowout the limit if noone else is active!
-						 */
-						if ((limits[i].current_value + increment_amt > limits[i].threshold_value) &&
-							(limits[i].current_value > 0.1))
-							over_limit = true;
-					} 
-					else
-					{
-						/*
-						 * No autocommit, so always fail statements that
-						 * blowout the limit.
-						 */
-						if (limits[i].current_value + increment_amt > limits[i].threshold_value)
-							over_limit = true;
-					}
-				}
-				else
-				{
-					increment_amt = -1 * incrementSet->increments[i];
-				}
-
-#ifdef RESLOCK_DEBUG
-				elog(DEBUG1, "checking cost limit threshold %.2f current %.2f",
 					 limits[i].threshold_value, limits[i].current_value);
 #endif
 			}
