@@ -1085,28 +1085,21 @@ ResHandleUtilityStmt(Portal portal, Node *stmt)
 }
 
 bool
-ResLockPrelock()
+ResLockPrelock(ResPortalIncrement *incrementSet)
 {
 	bool returnReleaseOk = false;
 	LOCKTAG		tag;
 	Oid			queueid;
 	int32		lockResult = 0;
-	ResPortalIncrement	incData;
 
 	queueid = GetResQueueId();
 
+	Assert(incrementSet != NULL);
 	/*
 	 * Check we have a valid queue before going any further.
 	 */
 	if (queueid != InvalidOid)
 	{
-		/*
-		 * Setup the resource portal increments, ready to be added.
-		 */
-		incData.pid = MyProc->pid;
-		incData.portalId = InvalidOid;
-		incData.increments[RES_COUNT_LIMIT] = 1;
-		incData.increments[RES_MEMORY_LIMIT] = ResourceQueueGetQueryMemoryLimit(NULL, queueid);
 		returnReleaseOk = true;
 
 		/*
@@ -1121,7 +1114,7 @@ ResLockPrelock()
 		elog(WARNING,"calling lock1");
 		PG_TRY();
 		{
-			lockResult = ResLockAcquire(&tag, &incData);
+			lockResult = ResLockAcquire(&tag, incrementSet);
 		}
 		PG_CATCH();
 		{
@@ -1138,7 +1131,7 @@ ResLockPrelock()
 			pgstat_report_waiting(PGBE_WAITING_NONE);
 
 			/* If we had acquired the resource queue lock, release it and clean up */
-			//ResLockRelease(&tag, portal->portalId);
+			ResLockRelease(&tag, -1);
 
 			PG_RE_THROW();
 		}

@@ -611,13 +611,6 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
 		return false;			
 	}
 
-	/*
-	 * Find the increment for this portal and process.
-	 */
-	MemSet(&portalTag, 0, sizeof(ResPortalTag));
-	portalTag.pid = MyProc->pid;
-	portalTag.portalId = resPortalId;
-	
 	LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
 
 	incrementSet = ResIncrementFind(&portalTag);
@@ -628,6 +621,7 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
 		single_activeData.pid = MyProc->pid;
 		single_activeData.portalId = resPortalId;
 		single_activeData.increments[RES_COUNT_LIMIT] = 1;
+		//single_activeData.increments[RES_MEMORY_LIMIT]
 
 		ResLockUpdateLimit(lock, proclock, &single_activeData, false);
 

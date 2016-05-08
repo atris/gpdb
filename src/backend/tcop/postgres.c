@@ -85,6 +85,7 @@
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbdispatchresult.h"
 #include "cdb/cdbgang.h"
+#include "cdb/memquota.h"
 #include "cdb/ml_ipc.h"
 #include "utils/guc.h"
 #include "access/twophase.h"
@@ -1542,6 +1543,7 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 	bool		was_logged = false;
 	bool		isTopLevel = false;
 	char		msec_str[32];
+	ResPortalIncrement	incData;
 
 	if (Gp_role != GP_ROLE_EXECUTE)
 	{
@@ -1599,8 +1601,6 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 
 	QueryContext = CurrentMemoryContext;
 
-	if (Gp_role == GP_ROLE_DISPATCH && !superuser() && ResourceScheduler)
-		ResLockPrelock();
 	/*
 	 * Do basic parsing of the query or queries (this should be safe even if
 	 * we are in aborted transaction state!)
@@ -1649,6 +1649,7 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 		Portal		portal;
 		DestReceiver *receiver;
 		int16		format;
+		bool takeLock = false;
 
 		/*
 		 * Get the command name for use in status display (it also becomes the
@@ -1701,7 +1702,76 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 
 		/* If we got a cancel signal in parsing or prior command, quit */
 		CHECK_FOR_INTERRUPTS();
-		
+
+		if (Gp_role == GP_ROLE_DISPATCH && !superuser() && ResourceScheduler)
+		{
+			switch (nodeTag(parsetree))
+			{
+
+				/*
+			 	* For INSERT/UPDATE/DELETE Skip if we have specified only SELECT,
+			 	* otherwise drop through to handle like a SELECT.
+			 	*/
+				case T_InsertStmt:
+				case T_DeleteStmt:
+				case T_UpdateStmt:
+				{
+					if (ResourceSelectOnly)
+					{
+						takeLock = false;
+						break;
+					}
+				}
+
+				case T_SelectStmt:
+				case T_DeclareCursorStmt:
+				{
+					/*
+				 	* Setup the resource portal increments, ready to be added.
+					*/
+					incData.pid = MyProc->pid;
+					incData.increments[RES_COUNT_LIMIT] = 1;
+
+					if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
+					{
+						Assert(gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO ||
+								gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_EAGER_FREE);
+
+						uint64 queryMemory = ResourceQueueGetQueryMemoryLimit(NULL, GetResQueueId());
+						Assert(queryMemory > 0);
+						if (gp_log_resqueue_memory)
+						{
+							elog(gp_resqueue_memory_log_level, "query requested %.0fKB", (double) queryMemory / 1024.0);
+						}
+
+						incData.increments[RES_MEMORY_LIMIT] = (Cost) queryMemory;
+					}
+					else 
+					{
+						Assert(gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_NONE);
+						incData.increments[RES_MEMORY_LIMIT] = (Cost) 0.0;				
+					}
+					takeLock = true;
+				}
+				break;
+
+				/*
+				 * We do not want to lock any of these query types.
+				*/
+				default:
+				{
+
+					takeLock = false;
+				}
+				break;
+			}
+
+			if (takeLock)
+			{
+				ResLockPrelock(&incData);
+			}
+		}
+
 		/*
 		 * Set up a snapshot if parse analysis/planning will need one.
 		 */
@@ -4712,11 +4782,9 @@ PostgresMain(int argc, char *argv[],
 		 */
 		if (ignore_till_sync && firstchar != EOF)
 			continue;
-		
-		//ResLockPrelock();
-		
+
 		elog((Debug_print_full_dtm ? LOG : DEBUG5), "First char: '%c'; gp_role = '%s'.",firstchar,role_to_string(Gp_role));
-		
+
 		switch (firstchar)
 		{
 			case 'Q':			/* simple query */
