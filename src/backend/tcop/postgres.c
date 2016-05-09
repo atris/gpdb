@@ -1544,6 +1544,7 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 	bool		isTopLevel = false;
 	char		msec_str[32];
 	ResPortalIncrement	incData;
+	bool takeLock = false;
 
 	if (Gp_role != GP_ROLE_EXECUTE)
 	{
@@ -1649,7 +1650,6 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 		Portal		portal;
 		DestReceiver *receiver;
 		int16		format;
-		bool takeLock = false;
 
 		/*
 		 * Get the command name for use in status display (it also becomes the

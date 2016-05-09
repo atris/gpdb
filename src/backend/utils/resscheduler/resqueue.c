@@ -47,6 +47,7 @@ static void ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock, ResPortalIncremen
 static void				ResGrantLock(LOCK *lock, PROCLOCK *proclock);
 static bool				ResUnGrantLock(LOCK *lock, PROCLOCK *proclock);
 static bool ResCheckSelfDeadLock(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *incrementSet, ResQueue queue);
+static void ResGrantLockLocal(LOCALLOCK *locallock, ResourceOwner owner);
 
 
 /*
@@ -397,8 +398,9 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 		/* 
 		 * The requested lock will *not* exhaust the limit for this resource
 		 * queue, so record this in the local lock hash, and grant it.
-		 */
+		*/
 		ResGrantLock(lock, proclock);
+		ResGrantLockLocal(locallock,owner);
 		ResLockUpdateLimit(lock, proclock, incrementSet, true);
 
 		LWLockRelease(ResQueueLock);
@@ -2070,48 +2072,26 @@ void AssertMemoryLimitsMatch(void)
 	return;
 }
 
-int
-ResLockCheckActiveStatements(LOCK *lock, PROCLOCK *proclock)
+static void
+ResGrantLockLocal(LOCALLOCK *locallock, ResourceOwner owner)
 {
-	ResQueue		queue;
-	ResLimit		limits;
-	int				status = STATUS_OK;
-	int				i;
-	
-	elog(WARNING,"in res1");
+	LOCALLOCKOWNER *lockOwners = locallock->lockOwners;
+	int			i;
 
-	Assert(LWLockHeldExclusiveByMe(ResQueueLock));
-
-	/* Get the queue for this lock.*/
-	queue = GetResQueueFromLock(lock);
-	limits = queue->limits;
-
-	for (i = 0; i < NUM_RES_LIMIT_TYPES; i++)
+	Assert(locallock->numLockOwners < locallock->maxLockOwners);
+	/* Count the total */
+	locallock->nLocks++;
+	/* Count the per-owner lock */
+	for (i = 0; i < locallock->numLockOwners; i++)
 	{
-		/*
-	 	* Skip the default threshold, as it means 'no limit'.
-	 	*/
-		if (limits[i].threshold_value == INVALID_RES_LIMIT_THRESHOLD)
+		if (lockOwners[i].owner == owner)
 		{
-			elog(WARNING,"thresinval1");
-
-			continue;
-		}
-
-		if (limits[i].type == RES_COUNT_LIMIT)
-		{
-			Assert((limits[i].threshold_is_max));
-			
-			elog(WARNING,"val1 %lf %lf",limits[i].current_value,limits[i].threshold_value);
-
-			if (limits[i].current_value + 1 > limits[i].threshold_value)
-			{
-					elog(WARNING,"wait1");
-					status = STATUS_FOUND;
-			}
+			lockOwners[i].nLocks++;
+			return;
 		}
 	}
-	elog(WARNING,"status1%d",status);
-	return status;
+	lockOwners[i].owner = owner;
+	lockOwners[i].nLocks = 1;
+	locallock->numLockOwners++;
 }
 #endif
