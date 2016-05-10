@@ -1132,6 +1132,10 @@ int64 ResourceQueueGetMemoryLimit(Oid queueId)
  */
 uint64 ResourceQueueGetQueryMemoryLimit(PlannedStmt *stmt, Oid queueId)
 {		
+	double costLimit = 1.0;
+	double planCost = 0.0;
+	double minRatio = 0.0;
+
 	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY);
 	Assert(gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO ||
 		   gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_EAGER_FREE);
@@ -1162,11 +1166,29 @@ uint64 ResourceQueueGetQueryMemoryLimit(PlannedStmt *stmt, Oid queueId)
 	LWLockRelease(ResQueueLock);
 
 	Assert(resQueue);	
-	int numSlots = (int) ceil(resQueue->limits[RES_COUNT_LIMIT].threshold_value);;
+	int numSlots = (int) ceil(resQueue->limits[RES_COUNT_LIMIT].threshold_value);
+
+	if (ResourceQueueUseCost)
+	{
+		Assert(stmt != NULL);
+		costLimit = (double) resQueue->limits[RES_COST_LIMIT].threshold_value;
+		planCost = stmt->planTree->total_cost;
+	
+		if (planCost < 1.0)
+			planCost = 1.0;
+
+		Assert(planCost > 0.0);
+
+		if (costLimit < 0.0)
+		{
+			/** there is no cost limit set */
+			costLimit = planCost;
+		}
+	}
 	
 	if (gp_log_resqueue_memory)
 	{
-		elog(gp_resqueue_memory_log_level, "numslots: %d", numSlots);
+		elog(gp_resqueue_memory_log_level, "numslots: %d, costlimit: %f", numSlots, costLimit);
 	}
 	
 	if (numSlots < 1)
@@ -1175,14 +1197,21 @@ uint64 ResourceQueueGetQueryMemoryLimit(PlannedStmt *stmt, Oid queueId)
 		numSlots = 1;
 	}
 
-	double minRatio = 1.0/ (double) numSlots;
-	
+	if (ResourceQueueUseCost)
+	{
+		minRatio = minDouble( 1.0/ (double) numSlots, planCost / costLimit);
+	}
+	else
+	{
+		minRatio = 1.0/ (double) numSlots;
+	}
+
 	minRatio = minDouble(minRatio, 1.0);
 
 	if (gp_log_resqueue_memory)
 	{
-		elog(gp_resqueue_memory_log_level, "slotratio: %0.3f, minratio: %0.3f",
-				1.0/ (double) numSlots, minRatio);
+		elog(gp_resqueue_memory_log_level, "slotratio: %0.3f, costratio: %0.3f, minratio: %0.3f",
+				1.0/ (double) numSlots, planCost / costLimit, minRatio);
 	}
 	
 	uint64 queryMem = (uint64) resqLimitBytes * minRatio;

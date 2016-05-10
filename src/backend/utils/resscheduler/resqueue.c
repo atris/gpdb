@@ -792,6 +792,54 @@ ResLockCheckLimit(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *incrementS
 			}
 			break;
 
+			case RES_COST_LIMIT:
+			{
+				if (!ResourceQueueUseCost)
+					break;
+
+				Assert((limits[i].threshold_is_max));
+
+				/* Setup whether to increment or decrement the cost. */
+				if (increment)
+				{
+					increment_amt = incrementSet->increments[i];
+
+					/* Check if this will overcommit */
+					if (increment_amt > limits[i].threshold_value)
+					will_overcommit = true;
+
+					if (queue->overcommit)
+					{
+						/*
+						 * Autocommit is enabled, allow statements that
+						 * blowout the limit if noone else is active!
+						*/
+						if ((limits[i].current_value + increment_amt > limits[i].threshold_value) &&
+						(limits[i].current_value > 0.1))
+						over_limit = true;
+					}
+					else
+					{
+						/*
+						* No autocommit, so always fail statements that
+						* blowout the limit.
+						*/
+						if (limits[i].current_value + increment_amt > limits[i].threshold_value)
+							over_limit = true;
+					}
+				}
+				else
+				{
+					increment_amt = -1 * incrementSet->increments[i];
+				}
+
+#ifdef RESLOCK_DEBUG
+	elog(DEBUG1, "checking cost limit threshold %.2f current %.2f",
+		 limits[i].threshold_value, limits[i].current_value);
+#endif
+			}
+			break;
+
 			case RES_MEMORY_LIMIT:
 			{
 				Assert((limits[i].threshold_is_max));
