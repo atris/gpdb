@@ -1703,7 +1703,7 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 		/* If we got a cancel signal in parsing or prior command, quit */
 		CHECK_FOR_INTERRUPTS();
 
-		if (Gp_role == GP_ROLE_DISPATCH && !superuser() && ResourceScheduler)
+		if (Gp_role == GP_ROLE_DISPATCH && !superuser() && ResourceScheduler && !ResourceQueueUseCost)
 		{
 			switch (nodeTag(parsetree))
 			{
@@ -1751,6 +1751,16 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 						Assert(gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_NONE);
 						incData.increments[RES_MEMORY_LIMIT] = (Cost) 0.0;				
 					}
+					takeLock = true;
+				}
+				break;
+
+				case T_CopyStmt:
+				{
+					incData.pid = MyProc->pid;
+					incData.increments[RES_COUNT_LIMIT] = 1;
+					incData.increments[RES_MEMORY_LIMIT] = (Cost) 0.0;
+
 					takeLock = true;
 				}
 				break;

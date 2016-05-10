@@ -49,6 +49,7 @@ int		MaxResourcePortalsPerXact;				/* Max # tracked portals -
 												 * per backend . */
 bool	ResourceSelectOnly;						/* Only lock SELECT/DECLARE? */
 bool	ResourceCleanupIdleGangs;				/* Cleanup idle gangs? */
+bool	ResourceQueueUseCost;				/* Use Cost checking */
 
 
 /*
@@ -545,7 +546,6 @@ ResLockPortal(Portal portal, QueryDesc *qDesc)
 	int32		lockResult = 0;
 	ResPortalIncrement	incData;
 	Plan *plan = NULL;
-	int status = STATUS_OK;
 
 	Assert(qDesc);
 	Assert(qDesc->plannedstmt);
@@ -682,42 +682,45 @@ ResLockPortal(Portal portal, QueryDesc *qDesc)
 					queueid, portal->portalId);
 #endif
 			SET_LOCKTAG_RESOURCE_QUEUE(tag, queueid);
-			return true;
 
-			//lockResult = ResLockAcquire(&tag, &incData);
-			//status = ResLockCheckLimit(lock, proclock, incrementSet, true);
-			if (status == STATUS_ERROR)
+			PG_TRY();
 			{
-				/* Adjust the counters as we no longer want this lock. */
-				ResLockRelease(&tag, portal->portalId);
+				lockResult = ResLockAcquire(&tag, &incData);
 			}
-			else if (status ==  STATUS_OK)
+			PG_CATCH();
 			{
 				/* 
-				 * The requested lock will *not* exhaust the limit for this resource
-				 * queue, so record this in the local lock hash, and grant it.
-				*/
-				//ResLockUpdateLimit(lock, proclock, incrementSet, true);
+				 * We might have been waiting for a resource queue lock when we get 
+				 * here. Calling ResLockRelease without calling ResLockWaitCancel will 
+				 * cause the locallock to be cleaned up, but will leave the global
+				 * variable lockAwaited still pointing to the locallock hash 
+				 * entry.
+				 */
+				ResLockWaitCancel();
+		
+				/* Change status to no longer waiting for lock */
+				pgstat_report_waiting(PGBE_WAITING_NONE);
 
-				/* Note the start time for queue statistics. */
-				pgstat_record_start_queue_exec(incData.portalId,
-																				tag.locktag_field1);
-			}
-			else
-			{
+				/* If we had acquired the resource queue lock, release it and clean up */	
 				ResLockRelease(&tag, portal->portalId);
 
 				/*
-				 * The requested lock will exhaust the limit for this resource queue,
-				 * so must wait. Before waiting, check the status of self deadlock.
-				*/
-				/*if (ResCheckSelfDeadLock(lock, proclock, incrementSet, queue))
-				{
-						ereport(ERROR,
-								(errcode(ERRCODE_T_R_DEADLOCK_DETECTED),
-								 errmsg("deadlock detected, locking against self")));
-				}*/
+				 * Perfmon related stuff: clean up if we got cancelled
+				 * while waiting.
+				 */
+				if (gp_enable_gpperfmon && qDesc->gpmon_pkt)
+				{			
+					gpmon_qlog_query_error(qDesc->gpmon_pkt);
+					pfree(qDesc->gpmon_pkt);
+					qDesc->gpmon_pkt = NULL;
+				}
+
+				portal->queueId = InvalidOid;
+				portal->portalId = INVALID_PORTALID;
+
+				PG_RE_THROW();
 			}
+			PG_END_TRY();
 
 			/* 
 			 * See if query was too small to bother locking at all, i.e had
@@ -789,7 +792,7 @@ ResLockUtilityPortal(Portal portal, float4 ignoreCostLimit)
 
 		PG_TRY();
 		{
-			//lockResult = ResLockAcquire(&tag, &incData);
+			lockResult = ResLockAcquire(&tag, &incData);
 		}
 		PG_CATCH();
 		{
@@ -1088,26 +1091,26 @@ bool
 ResLockPrelock(ResPortalIncrement *incrementSet)
 {
 	bool returnReleaseOk = false;
-	LOCKTAG		tag;
-	Oid			queueid;
-	int32		lockResult = 0;
+	LOCKTAG	tag;
+	Oid	queueid;
+	int32	lockResult = 0;
 
 	queueid = GetResQueueId();
 
 	Assert(incrementSet != NULL);
 	/*
-	 * Check we have a valid queue before going any further.
-	 */
+	* Check we have a valid queue before going any further.
+	*/
 	if (queueid != InvalidOid)
 	{
 		returnReleaseOk = true;
 
 		/*
-		 * Get the resource lock.
-		 */
+		* Get the resource lock.
+		*/
 #ifdef RESLOCK_DEBUG
-		elog(DEBUG1, "acquire resource lock for queue %u (portal %u)",
-				queueid, portal->portalId);
+elog(DEBUG1, "acquire resource lock for queue %u (portal %u)",
+queueid, portal->portalId);
 #endif
 		SET_LOCKTAG_RESOURCE_QUEUE(tag, queueid);
 
@@ -1119,12 +1122,12 @@ ResLockPrelock(ResPortalIncrement *incrementSet)
 		PG_CATCH();
 		{
 			/*
-			 * We might have been waiting for a resource queue lock when we get
-			 * here. Calling ResLockRelease without calling ResLockWaitCancel will
-			 * cause the locallock to be cleaned up, but will leave the global
-			 * variable lockAwaited still pointing to the locallock hash
-			 * entry.
-			 */
+			* We might have been waiting for a resource queue lock when we get
+			* here. Calling ResLockRelease without calling ResLockWaitCancel will
+			* cause the locallock to be cleaned up, but will leave the global
+			* variable lockAwaited still pointing to the locallock hash
+			* entry.
+			*/
 			ResLockWaitCancel();
 
 			/* Change status to no longer waiting for lock */
@@ -1139,5 +1142,6 @@ ResLockPrelock(ResPortalIncrement *incrementSet)
 
 		Assert((lockResult != LOCKACQUIRE_NOT_AVAIL));
 	}
+
 	return returnReleaseOk;
 }
