@@ -1934,6 +1934,8 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 		EndCommand(completionTag, dest);
 	}							/* end loop over parsetrees */
 
+	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler && !ResourceQueueUseCost)
+		ResLockPreUnlock();
 	/*
 	 * Close down transaction statement, if one is open.
 	 */

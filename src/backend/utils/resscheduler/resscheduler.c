@@ -1145,3 +1145,27 @@ queueid, portal->portalId);
 
 	return returnReleaseOk;
 }
+
+void
+ResLockPreUnlock()
+{
+	LOCKTAG tag;
+	Oid     queueid;
+
+	queueid = GetResQueueId();
+
+	/*
+	 * Check we have a valid queue before going any further.
+	*/
+	if (queueid != InvalidOid)
+	{
+		SET_LOCKTAG_RESOURCE_QUEUE(tag, queueid);
+
+	#ifdef RESLOCK_DEBUG
+			elog(DEBUG1, "release resource lock for queue %u",
+			queueid);
+	#endif
+
+		ResLockRelease(&tag, -1);
+	}
+}
